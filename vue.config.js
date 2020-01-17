@@ -12,7 +12,10 @@ module.exports = {
     headers: { 'Access-Control-Allow-Origin': '*' }
   },
   css: {
-    extract: process.env.NODE_ENV === 'production'
+    // SSR fails when split code
+    // https://github.com/vuejs/vue/issues/8488
+    // https://github.com/webpack-contrib/mini-css-extract-plugin/issues/90
+    extract: !TARGET_NODE && process.env.NODE_ENV === 'production'
   },
   configureWebpack: () => ({
     // 将 entry 指向应用程序的 server / client 文件
@@ -51,9 +54,35 @@ module.exports = {
         })
       })
 
+    /*
+    config.module
+      .rule('css')
+      .oneOf('vue')
+      .use('null-loader')
+      .loader('null-loader')
+
+    config.module
+      .rule('css')
+      .oneOf('normal')
+      .use('null-loader')
+      .loader('null-loader')
+
+    config.module
+      .rule('css')
+      .oneOf('vue-modules')
+      .use('css-loader/locals')
+      .loader('css-loader/locals')
+
+    config.module
+      .rule('css')
+      .oneOf('normal-modules')
+      .use('css-loader/locals')
+      .loader('css-loader/locals')
+    */
+
     // fix ssr hot update bug
     if (TARGET_NODE) {
-      config.plugins.delete("hmr");
+      config.plugins.delete('hmr')
     }
   }
 }
