@@ -6,16 +6,18 @@ const TARGET_NODE = process.env.WEBPACK_TARGET === 'node'
 const target = TARGET_NODE ? 'server' : 'client'
 const isDev = process.env.NODE_ENV !== 'production'
 module.exports = {
-  publicPath: isDev ? 'http://127.0.0.1:8080' : 'http://127.0.0.1:3000',
+  //publicPath: isDev ? 'http://127.0.0.1:8080' : 'http://127.0.0.1:3000',
   devServer: {
     historyApiFallback: true,
-    headers: { 'Access-Control-Allow-Origin': '*' }
+    headers: { 'Access-Control-Allow-Origin': '*' },
+    disableHostCheck: true //  新增该配置项 fix ssr console error
   },
   css: {
+    sourceMap: !isDev && !TARGET_NODE, // if enable sourceMap:  fix ssr load Critical CSS throw replace of undefind
     // SSR fails when split code
     // https://github.com/vuejs/vue/issues/8488
     // https://github.com/webpack-contrib/mini-css-extract-plugin/issues/90
-    extract: !TARGET_NODE && process.env.NODE_ENV === 'production'
+    // extract: !TARGET_NODE && process.env.NODE_ENV === 'production'
   },
   configureWebpack: () => ({
     // 将 entry 指向应用程序的 server / client 文件
@@ -36,7 +38,7 @@ module.exports = {
         // 不要外置化 webpack 需要处理的依赖模块。
         // 你可以在这里添加更多的文件类型。例如，未处理 *.vue 原始文件，
         // 你还应该将修改 `global`（例如 polyfill）的依赖模块列入白名单
-        whitelist: [/\.css$/]
+        whitelist: [/\.css$/, /\?vue&type=style/]
       })
       : undefined,
     optimization: {
@@ -54,31 +56,50 @@ module.exports = {
         })
       })
 
-    /*
-    config.module
-      .rule('css')
-      .oneOf('vue')
-      .use('null-loader')
-      .loader('null-loader')
+    if (TARGET_NODE) {
+      // fix ssr bug: document not found -- https://github.com/Akryum/vue-cli-plugin-ssr/blob/master/lib/webpack.js
+      const isExtracting = config.plugins.has("extract-css");
+      if (isExtracting) {
+        // Remove extract
+        const langs = ["css", "postcss", "scss", "sass", "less", "stylus"];
+        const types = ["vue-modules", "vue", "normal-modules", "normal"];
+        for (const lang of langs) {
+          for (const type of types) {
+            const rule = config.module.rule(lang).oneOf(type);
+            rule.uses.delete("extract-css-loader");
+            // Critical CSS
+            rule
+              .use("vue-style")
+              .loader("vue-style-loader")
+              .before("css-loader");
+          }
+        }
+        config.plugins.delete("extract-css");
+      }
+
+
+      config.module
+        .rule("vue")
+        .use("cache-loader")
+        .tap(options => {
+          // Change cache directory for server-side
+          options.cacheIdentifier += "-server";
+          options.cacheDirectory += "-server";
+          return options;
+        })
+    }
 
     config.module
-      .rule('css')
-      .oneOf('normal')
-      .use('null-loader')
-      .loader('null-loader')
-
-    config.module
-      .rule('css')
-      .oneOf('vue-modules')
-      .use('css-loader/locals')
-      .loader('css-loader/locals')
-
-    config.module
-      .rule('css')
-      .oneOf('normal-modules')
-      .use('css-loader/locals')
-      .loader('css-loader/locals')
-    */
+      .rule("vue")
+      .use("vue-loader")
+      .tap(options => {
+        if (TARGET_NODE) {
+          options.cacheIdentifier += "-server";
+          options.cacheDirectory += "-server";
+        }
+        options.optimizeSSR = TARGET_NODE;
+        return options;
+      })
 
     // fix ssr hot update bug
     if (TARGET_NODE) {
